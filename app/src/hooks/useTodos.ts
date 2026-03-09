@@ -1,15 +1,39 @@
-/**
- * useTodos.ts
- * State hook for daily todo items: CRUD, filtering by member+date, progress calculation.
- */
-
-import { useState, useCallback } from 'react';
+import { useState, useEffect, useCallback } from 'react';
 import type { TodoItem } from '../types';
-import { SAMPLE_TODOS } from '../data/sampleEvents';
+import { supabase } from '../lib/supabase';
+import { dbTodoToTodoItem } from '../lib/mappers';
 import { getWeekDates, toDateKey } from '../utils/weekUtils';
 
 export function useTodos() {
-  const [todos, setTodos] = useState<TodoItem[]>(SAMPLE_TODOS);
+  const [todos, setTodos] = useState<TodoItem[]>([]);
+
+  // Fetch on mount
+  useEffect(() => {
+    supabase.from('todos').select('*').then(({ data }) => {
+      if (data) setTodos(data.map(dbTodoToTodoItem));
+    });
+  }, []);
+
+  // Realtime subscription
+  useEffect(() => {
+    const channel = supabase
+      .channel('realtime-todos')
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'todos' }, (payload) => {
+        if (payload.eventType === 'INSERT') {
+          setTodos((prev) => {
+            if (prev.some((t) => t.id === (payload.new as any).id)) return prev;
+            return [...prev, dbTodoToTodoItem(payload.new as any)];
+          });
+        } else if (payload.eventType === 'UPDATE') {
+          const updated = dbTodoToTodoItem(payload.new as any);
+          setTodos((prev) => prev.map((t) => (t.id === updated.id ? updated : t)));
+        } else if (payload.eventType === 'DELETE') {
+          setTodos((prev) => prev.filter((t) => t.id !== (payload.old as any).id));
+        }
+      })
+      .subscribe();
+    return () => { supabase.removeChannel(channel); };
+  }, []);
 
   const getTodosByMemberDate = useCallback(
     (memberId: string, dateKey: string) =>
@@ -19,43 +43,53 @@ export function useTodos() {
     [todos],
   );
 
-  const addTodo = useCallback((memberId: string, dateKey: string, title: string) => {
+  const addTodo = useCallback(async (memberId: string, dateKey: string, title: string) => {
+    const id = crypto.randomUUID();
     const now = new Date().toISOString();
-    setTodos((prev) => {
-      const existing = prev.filter((t) => t.memberId === memberId && t.dateKey === dateKey);
-      const newTodo: TodoItem = {
-        id: `todo_${Date.now().toString(36)}`,
-        memberId,
-        dateKey,
-        title,
-        completed: false,
-        createdAt: now,
-        updatedAt: now,
-        order: existing.length,
-      };
-      return [...prev, newTodo];
+    const existing = todos.filter((t) => t.memberId === memberId && t.dateKey === dateKey);
+    const newTodo: TodoItem = {
+      id,
+      memberId,
+      dateKey,
+      title,
+      completed: false,
+      createdAt: now,
+      updatedAt: now,
+      order: existing.length,
+    };
+    setTodos((prev) => [...prev, newTodo]);
+    await supabase.from('todos').insert({
+      id,
+      member_id: memberId,
+      date_key: dateKey,
+      title,
+      completed: false,
+      order: existing.length,
     });
-  }, []);
+  }, [todos]);
 
-  const toggleTodo = useCallback((id: string) => {
-    const now = new Date().toISOString();
+  const toggleTodo = useCallback(async (id: string) => {
+    const todo = todos.find((t) => t.id === id);
+    if (!todo) return;
+    const newCompleted = !todo.completed;
     setTodos((prev) =>
-      prev.map((t) => (t.id === id ? { ...t, completed: !t.completed, updatedAt: now } : t)),
+      prev.map((t) => (t.id === id ? { ...t, completed: newCompleted, updatedAt: new Date().toISOString() } : t)),
     );
-  }, []);
+    await supabase.from('todos').update({ completed: newCompleted }).eq('id', id);
+  }, [todos]);
 
-  const updateTodo = useCallback((id: string, patch: Partial<Pick<TodoItem, 'title' | 'order'>>) => {
-    const now = new Date().toISOString();
+  const updateTodo = useCallback(async (id: string, patch: Partial<Pick<TodoItem, 'title' | 'order'>>) => {
     setTodos((prev) =>
-      prev.map((t) => (t.id === id ? { ...t, ...patch, updatedAt: now } : t)),
+      prev.map((t) => (t.id === id ? { ...t, ...patch, updatedAt: new Date().toISOString() } : t)),
     );
+    await supabase.from('todos').update(patch).eq('id', id);
   }, []);
 
-  const removeTodo = useCallback((id: string) => {
+  const removeTodo = useCallback(async (id: string) => {
     setTodos((prev) => prev.filter((t) => t.id !== id));
+    await supabase.from('todos').delete().eq('id', id);
   }, []);
 
-  /** Daily progress for a single date */
   const getDailyProgress = useCallback(
     (memberId: string, dateKey: string) => {
       const dayTodos = todos.filter((t) => t.memberId === memberId && t.dateKey === dateKey);
@@ -70,7 +104,6 @@ export function useTodos() {
     [todos],
   );
 
-  /** Weekly progress: aggregates all days in the week (for admin dashboard) */
   const getWeeklyProgress = useCallback(
     (memberId: string, weekKey: string) => {
       const dates = getWeekDates(weekKey);
@@ -86,8 +119,9 @@ export function useTodos() {
     [todos],
   );
 
-  const removeTodosByMember = useCallback((memberId: string) => {
+  const removeTodosByMember = useCallback(async (memberId: string) => {
     setTodos((prev) => prev.filter((t) => t.memberId !== memberId));
+    await supabase.from('todos').delete().eq('member_id', memberId);
   }, []);
 
   return { todos, getTodosByMemberDate, addTodo, toggleTodo, updateTodo, removeTodo, getDailyProgress, getWeeklyProgress, removeTodosByMember };

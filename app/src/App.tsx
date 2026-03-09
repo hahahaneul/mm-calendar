@@ -9,9 +9,10 @@ import './styles.css';
 import type { CalendarEvent, ViewType } from './types';
 import { useEvents } from './hooks/useEvents';
 import { useProjects } from './hooks/useProjects';
-import { useSharing } from './hooks/useSharing';
+import { useWebhooks } from './hooks/useWebhooks';
 import { useMembers } from './hooks/useMembers';
 import { useTodos } from './hooks/useTodos';
+import { useAuth } from './contexts/AuthContext';
 import { getWeekDates, toDateKey } from './utils/weekUtils';
 
 import { Header } from './components/Header';
@@ -20,7 +21,6 @@ import { DetailPanel } from './components/DetailPanel';
 import { CommandPalette } from './components/CommandPalette';
 import { EventEditorModal } from './components/modals/EventEditorModal';
 import { ProjectManagerModal } from './components/modals/ProjectManagerModal';
-import { ShareLinkModal } from './components/modals/ShareLinkModal';
 import { WebhookManagerModal } from './components/modals/WebhookManagerModal';
 import { MemberManagerModal } from './components/modals/MemberManagerModal';
 import { MonthView } from './components/views/MonthView';
@@ -33,15 +33,15 @@ import { MemberSidebar } from './components/member/MemberSidebar';
 import { AdminDashboard } from './components/admin/AdminDashboard';
 
 export default function App() {
+  // ── Auth ─────────────────────────────────────────────────────
+  const { signOut } = useAuth();
+
   // ── State ────────────────────────────────────────────────────
   const [currentView, setCurrentView] = useState<ViewType>('month');
   const { projects, updateProject, addProject, deleteProject, addSubcategory, deleteSubcategory } = useProjects();
 
-  const [activeProjectIds, setActiveProjectIds] = useState<Set<string>>(
-    () => new Set(projects.map((p) => p.id))
-  );
+  const [activeProjectIds, setActiveProjectIds] = useState<Set<string>>(new Set());
   const [cmdPaletteOpen, setCmdPaletteOpen] = useState(false);
-  const [shareModalOpen, setShareModalOpen] = useState(false);
   const [webhookModalOpen, setWebhookModalOpen] = useState(false);
   const [projectManagerOpen, setProjectManagerOpen] = useState(false);
   const [dayModal, setDayModal] = useState<{ date: Date; events: CalendarEvent[] } | null>(null);
@@ -49,14 +49,11 @@ export default function App() {
   const [detailPanelOpen, setDetailPanelOpen] = useState(true);
 
   const {
-    shareLinks,
     webhooks,
-    createShareLink,
-    deleteShareLink,
     addWebhook,
     updateWebhookStatus,
     deleteWebhook,
-  } = useSharing();
+  } = useWebhooks();
 
   const {
     events,
@@ -72,8 +69,15 @@ export default function App() {
     editor,
   } = useEvents();
 
-  const { members, currentUser, switchUser, addMember, updateMember, removeMember } = useMembers();
+  const { members, currentUser, addMember, updateMember, removeMember } = useMembers();
   const { getTodosByMemberDate, addTodo, toggleTodo, removeTodo, getDailyProgress, getWeeklyProgress, removeTodosByMember } = useTodos();
+
+  // Sync activeProjectIds when projects load from Supabase
+  useEffect(() => {
+    if (projects.length > 0 && activeProjectIds.size === 0) {
+      setActiveProjectIds(new Set(projects.map((p) => p.id)));
+    }
+  }, [projects, activeProjectIds.size]);
 
   // ── Member page state ──────────────────────────────────────────
   const [selectedMemberId, setSelectedMemberId] = useState<string | null>(null);
@@ -247,13 +251,6 @@ export default function App() {
     }
   }, [removeMember, removeTodosByMember, selectedMemberId, currentUser.id]);
 
-  // Safety: if currentUser was removed, fall back to first member
-  useEffect(() => {
-    if (!members.find((m) => m.id === currentUser.id) && members.length > 0) {
-      switchUser(members[0].id);
-    }
-  }, [members, currentUser.id, switchUser]);
-
   // Open detail panel when an event is selected
   const handleSelectEvent = useCallback(
     (event: CalendarEvent) => {
@@ -284,11 +281,9 @@ export default function App() {
         onViewChange={handleViewChange}
         onNewEvent={() => openEditor('create')}
         onCommandPalette={() => setCmdPaletteOpen(true)}
-        onShare={() => setShareModalOpen(true)}
         currentUser={currentUser}
-        members={members}
-        onSwitchUser={switchUser}
         onOpenMemberView={handleOpenMemberView}
+        onSignOut={signOut}
       />
 
       <div className="body-layout">
@@ -418,8 +413,9 @@ export default function App() {
             if (patch.color) syncProjectColor(id, patch.color);
           }}
           onAddProject={(name) => {
-            const newProj = addProject(name);
-            setActiveProjectIds((prev) => new Set([...prev, newProj.id]));
+            addProject(name).then((newProj) => {
+              setActiveProjectIds((prev) => new Set([...prev, newProj.id]));
+            });
           }}
           onDeleteProject={(id) => {
             deleteProject(id);
@@ -448,15 +444,6 @@ export default function App() {
             });
           }}
           onClose={() => setProjectManagerOpen(false)}
-        />
-      )}
-
-      {shareModalOpen && (
-        <ShareLinkModal
-          shareLinks={shareLinks}
-          onCreateLink={createShareLink}
-          onDeleteLink={deleteShareLink}
-          onClose={() => setShareModalOpen(false)}
         />
       )}
 

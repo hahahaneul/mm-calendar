@@ -4,7 +4,7 @@
  * All dates relative to 2026-03 to match current session date.
  */
 
-import type { CalendarEvent, Project, Tag, WebhookSubscription, ShareLink, Member, TodoItem } from '../types';
+import type { CalendarEvent, Project, Tag, WebhookSubscription, Member, TodoItem } from '../types';
 
 export const PROJECTS: Project[] = [
   { id: 'proj_design',    name: '디자인 시스템', color: '#6366f1', order: 1, subcategories: ['컴포넌트', '토큰', '접근성'] },
@@ -279,24 +279,6 @@ export const SAMPLE_EVENTS: CalendarEvent[] = [
     subcategory: 'iOS',
     updatedAt: '2026-03-01T08:00:00Z',
     updatedBy: 'seoyeon',
-  },
-];
-
-export const SAMPLE_SHARE_LINKS: ShareLink[] = [
-  {
-    id: 'sl_001',
-    permission: 'view',
-    token: 'abc123viewonly',
-    url: 'https://calarc.app/share/abc123viewonly',
-    createdAt: '2026-03-01T10:00:00Z',
-    expiresAt: '2026-04-01T10:00:00Z',
-  },
-  {
-    id: 'sl_002',
-    permission: 'edit',
-    token: 'xyz789editlink',
-    url: 'https://calarc.app/share/xyz789editlink',
-    createdAt: '2026-03-05T14:30:00Z',
   },
 ];
 

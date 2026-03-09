@@ -9,7 +9,7 @@ import type { Member } from '../../types';
 interface MemberManagerModalProps {
   members: Member[];
   currentUser: Member;
-  onAddMember: (name: string, email: string, role: 'admin' | 'member') => Member;
+  onAddMember: (name: string, email: string, role: 'admin' | 'member') => Member | Promise<Member>;
   onUpdateMember: (id: string, patch: Partial<Pick<Member, 'name' | 'email' | 'role' | 'color'>>) => void;
   onRemoveMember: (id: string) => void;
   onClose: () => void;
@@ -88,10 +88,10 @@ export function MemberManagerModal({
     }
   }
 
-  function handleAdd() {
+  async function handleAdd() {
     const name = newName.trim() || '새 팀원';
     const email = newEmail.trim();
-    const added = onAddMember(name, email, newRole);
+    const added = await onAddMember(name, email, newRole);
     setDrafts((prev) => ({
       ...prev,
       [added.id]: { name: added.name, email: added.email, role: added.role, color: added.color },

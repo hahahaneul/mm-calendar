@@ -65,13 +65,3 @@ export interface WebhookSubscription {
   createdAt: string;
 }
 
-export type SharePermission = 'view' | 'edit';
-
-export interface ShareLink {
-  id: string;
-  permission: SharePermission;
-  token: string;
-  url: string;
-  createdAt: string;
-  expiresAt?: string;
-}

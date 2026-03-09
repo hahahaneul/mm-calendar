@@ -1,10 +1,8 @@
 /**
  * Header.tsx
- * Top navigation bar: logo, view toggle, global filter hints, share & new-event buttons.
- * Now includes team member navigation and user switcher.
+ * Top navigation bar: logo, view toggle, new-event button, user display + logout.
  */
 
-import { useState } from 'react';
 import type { ViewType, Member } from '../types';
 import { ViewToggle } from './ViewToggle';
 
@@ -13,11 +11,9 @@ interface HeaderProps {
   onViewChange: (view: ViewType) => void;
   onNewEvent: () => void;
   onCommandPalette: () => void;
-  onShare: () => void;
   currentUser: Member;
-  members: Member[];
-  onSwitchUser: (id: string) => void;
   onOpenMemberView: () => void;
+  onSignOut: () => Promise<void>;
 }
 
 export function Header({
@@ -25,14 +21,10 @@ export function Header({
   onViewChange,
   onNewEvent,
   onCommandPalette,
-  onShare,
   currentUser,
-  members,
-  onSwitchUser,
   onOpenMemberView,
+  onSignOut,
 }: HeaderProps) {
-  const [userMenuOpen, setUserMenuOpen] = useState(false);
-
   return (
     <header className="header">
       {/* Logo */}
@@ -55,13 +47,8 @@ export function Header({
           <span>⌘K</span>
         </button>
 
-        {/* Global filters placeholder */}
         <button className="btn btn-ghost">
           필터
-        </button>
-
-        <button className="btn btn-ghost" onClick={onShare}>
-          공유
         </button>
 
         <button
@@ -75,13 +62,9 @@ export function Header({
           + 새 일정
         </button>
 
-        {/* User switcher */}
+        {/* Current user + logout */}
         <div className="user-switcher">
-          <button
-            className="user-switcher-btn"
-            onClick={() => setUserMenuOpen(!userMenuOpen)}
-            title="사용자 전환"
-          >
+          <div className="user-switcher-btn" style={{ cursor: 'default' }}>
             <span
               className="user-switcher-avatar"
               style={{ backgroundColor: currentUser.color }}
@@ -89,29 +72,14 @@ export function Header({
               {currentUser.name.charAt(0)}
             </span>
             <span className="user-switcher-name">{currentUser.name}</span>
+          </div>
+          <button
+            className="btn btn-ghost"
+            onClick={onSignOut}
+            style={{ fontSize: '12px', padding: '4px 8px' }}
+          >
+            로그아웃
           </button>
-
-          {userMenuOpen && (
-            <div className="user-switcher-menu">
-              {members.map((m) => (
-                <button
-                  key={m.id}
-                  className={`user-switcher-option${m.id === currentUser.id ? ' active' : ''}`}
-                  onClick={() => {
-                    onSwitchUser(m.id);
-                    setUserMenuOpen(false);
-                  }}
-                >
-                  <span
-                    className="user-switcher-option-dot"
-                    style={{ backgroundColor: m.color }}
-                  />
-                  {m.name}
-                  {m.role === 'admin' && <span className="user-switcher-badge">관리자</span>}
-                </button>
-              ))}
-            </div>
-          )}
         </div>
       </div>
     </header>
