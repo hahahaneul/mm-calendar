@@ -243,9 +243,9 @@ export default function App() {
   }, [events, upsertEvent, addTodo]);
 
   // ── Member management ──────────────────────────────────────────
-  const handleRemoveMember = useCallback((id: string) => {
-    removeMember(id);
-    removeTodosByMember(id);
+  const handleRemoveMember = useCallback(async (id: string) => {
+    removeTodosByMember(id);  // optimistic local cleanup
+    await removeMember(id);   // calls Edge Function
     if (selectedMemberId === id) {
       setSelectedMemberId(currentUser.id);
     }

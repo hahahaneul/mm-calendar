@@ -11,7 +11,7 @@ interface MemberManagerModalProps {
   currentUser: Member;
   onAddMember: (name: string, email: string, role: 'admin' | 'member') => Member | Promise<Member>;
   onUpdateMember: (id: string, patch: Partial<Pick<Member, 'name' | 'email' | 'role' | 'color'>>) => void;
-  onRemoveMember: (id: string) => void;
+  onRemoveMember: (id: string) => void | Promise<void>;
   onClose: () => void;
 }
 
@@ -32,6 +32,8 @@ export function MemberManagerModal({
   const [newName, setNewName] = useState('');
   const [newEmail, setNewEmail] = useState('');
   const [newRole, setNewRole] = useState<'admin' | 'member'>('member');
+  const [inviting, setInviting] = useState(false);
+  const [inviteError, setInviteError] = useState<string | null>(null);
 
   function handleFieldChange(id: string, field: 'name' | 'email', value: string) {
     setDrafts((prev) => ({ ...prev, [id]: { ...prev[id], [field]: value } }));
@@ -61,7 +63,7 @@ export function MemberManagerModal({
     onUpdateMember(id, { color });
   }
 
-  function handleDelete(member: Member) {
+  async function handleDelete(member: Member) {
     // Cannot delete yourself
     if (member.id === currentUser.id) {
       window.alert('본인 계정은 삭제할 수 없습니다.');
@@ -79,26 +81,44 @@ export function MemberManagerModal({
       `"${member.name}" 팀원을 삭제하시겠습니까?\n해당 팀원의 할 일이 삭제됩니다. 일정은 유지됩니다.`,
     );
     if (confirmed) {
-      onRemoveMember(member.id);
-      setDrafts((prev) => {
-        const next = { ...prev };
-        delete next[member.id];
-        return next;
-      });
+      try {
+        await onRemoveMember(member.id);
+        setDrafts((prev) => {
+          const next = { ...prev };
+          delete next[member.id];
+          return next;
+        });
+      } catch (err: any) {
+        window.alert(err.message || '삭제에 실패했습니다.');
+      }
     }
   }
 
   async function handleAdd() {
     const name = newName.trim() || '새 팀원';
     const email = newEmail.trim();
-    const added = await onAddMember(name, email, newRole);
-    setDrafts((prev) => ({
-      ...prev,
-      [added.id]: { name: added.name, email: added.email, role: added.role, color: added.color },
-    }));
-    setNewName('');
-    setNewEmail('');
-    setNewRole('member');
+    if (!email) {
+      setInviteError('이메일을 입력하세요.');
+      return;
+    }
+
+    setInviting(true);
+    setInviteError(null);
+
+    try {
+      const added = await onAddMember(name, email, newRole);
+      setDrafts((prev) => ({
+        ...prev,
+        [added.id]: { name: added.name, email: added.email, role: added.role, color: added.color },
+      }));
+      setNewName('');
+      setNewEmail('');
+      setNewRole('member');
+    } catch (err: any) {
+      setInviteError(err.message || '초대에 실패했습니다.');
+    } finally {
+      setInviting(false);
+    }
   }
 
   return (
@@ -245,10 +265,13 @@ export function MemberManagerModal({
               <option value="member">팀원</option>
               <option value="admin">관리자</option>
             </select>
-            <button className="btn btn-ghost" onClick={handleAdd} style={{ flexShrink: 0 }}>
-              팀원 추가
+            <button className="btn btn-ghost" onClick={handleAdd} disabled={inviting} style={{ flexShrink: 0 }}>
+              {inviting ? '초대 중...' : '팀원 추가'}
             </button>
           </div>
+          {inviteError && (
+            <p style={{ color: 'var(--color-danger, #ef4444)', fontSize: 12, margin: 0 }}>{inviteError}</p>
+          )}
           <button className="btn btn-primary" onClick={onClose}>확인</button>
         </div>
       </div>

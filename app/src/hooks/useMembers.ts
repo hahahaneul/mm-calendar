@@ -48,10 +48,28 @@ export function useMembers() {
   const switchUser = useCallback((_id: string) => {}, []);
 
   const addMember = useCallback(async (name: string, email: string, role: 'admin' | 'member'): Promise<Member> => {
-    // For now, just add to local state. In production, this would call an Edge Function to invite.
-    const tempMember: Member = { id: crypto.randomUUID(), name, email, role, color: '#3B82F6' };
-    setMembers((prev) => [...prev, tempMember]);
-    return tempMember;
+    const { data, error } = await supabase.functions.invoke('invite-member', {
+      body: { name, email, role },
+    });
+
+    if (error) throw new Error(error.message || '팀원 초대에 실패했습니다.');
+    if (data?.error) throw new Error(data.error);
+
+    const newMember: Member = {
+      id: data.id,
+      name: data.name,
+      email: data.email,
+      role: data.role,
+      color: data.color,
+    };
+
+    // Optimistically add (realtime will also fire INSERT)
+    setMembers((prev) => {
+      if (prev.some((m) => m.id === newMember.id)) return prev;
+      return [...prev, newMember];
+    });
+
+    return newMember;
   }, []);
 
   const updateMember = useCallback(async (id: string, patch: Partial<Pick<Member, 'name' | 'email' | 'role' | 'color'>>) => {
@@ -60,8 +78,19 @@ export function useMembers() {
   }, []);
 
   const removeMember = useCallback(async (id: string) => {
+    // Optimistic removal
     setMembers((prev) => prev.filter((m) => m.id !== id));
-    // In production, this would call an Edge Function to delete the auth user
+
+    const { data, error } = await supabase.functions.invoke('remove-member', {
+      body: { memberId: id },
+    });
+
+    if (error || data?.error) {
+      // Revert: refetch all members on failure
+      const { data: refreshed } = await supabase.from('profiles').select('*');
+      if (refreshed) setMembers(refreshed.map(dbProfileToMember));
+      throw new Error(error?.message || data?.error || '팀원 삭제에 실패했습니다.');
+    }
   }, []);
 
   return { members, currentUser, getMember, switchUser, addMember, updateMember, removeMember };
